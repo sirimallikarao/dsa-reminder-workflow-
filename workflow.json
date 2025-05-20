@@ -1,0 +1,108 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            { "hour": 4 },
+            { "hour": 18 }
+          ]
+        }
+      },
+      "name": "Cron Trigger",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [180, -60],
+      "id": "cron-trigger"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "sheetId": "YOUR_GOOGLE_SHEET_ID_HERE",
+        "range": "Sheet1!A:C",
+        "options": {}
+      },
+      "name": "Fetch Problems",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 1,
+      "position": [380, -60],
+      "id": "fetch-problems",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Separate unsolved and all problems\nconst unsolved = items.filter(item => item.json.Status === 'No');\nconst all = items;\n\nlet selected = [];\n\nif (unsolved.length >= 5) {\n  while (selected.length < 2) {\n    const randIndex = Math.floor(Math.random() * unsolved.length);\n    const problem = unsolved[randIndex];\n    if (!selected.includes(problem)) {\n      selected.push(problem);\n    }\n  }\n} else {\n  while (selected.length < 2) {\n    const randIndex = Math.floor(Math.random() * all.length);\n    const problem = all[randIndex];\n    if (!selected.includes(problem)) {\n      selected.push(problem);\n    }\n  }\n}\n\nreturn selected;"
+      },
+      "name": "Select Problems",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [580, -60],
+      "id": "select-problems"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Store selected problems in workflow static data\nconst workflowData = this.getWorkflowStaticData('global');\nworkflowData.selectedProblems = items.map(item => item.json);\nreturn items;"
+      },
+      "name": "Store Selected Problems",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [780, -60],
+      "id": "store-selected"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Retrieve selected problems from workflow static data\nconst workflowData = this.getWorkflowStaticData('global');\nconst selectedProblems = workflowData.selectedProblems || [];\n\nconst currentHour = new Date().getHours();\nconst isMorning = currentHour === 4;\n\nconst subject = isMorning\n  ? `Daily DSA Practice: ${new Date().toLocaleDateString()}`\n  : `Evening Reminder: Complete Your DSA Problems for ${new Date().toLocaleDateString()}`;\n\nlet body = 'Here are your DSA problems for today:\\n\\n';\nselectedProblems.forEach((problem, index) => {\n  body += `Problem ${index + 1}:\\nTopic: ${problem.Topic}\\nDescription: ${problem.Problem}\\n\\n`;\n});\nbody += 'Remember to mark these problems as \"Yes\" once you have solved them.';\n\nreturn [{ json: { subject, body } }];"
+      },
+      "name": "Prepare Email Content",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [980, -60],
+      "id": "prepare-email"
+    },
+    {
+      "parameters": {
+        "sendTo": "YOUR_EMAIL_HERE",
+        "subject": "={{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1200, -60],
+      "id": "send-email",
+      "name": "Send Email",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail OAuth2"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Cron Trigger": {
+      "main": [[{ "node": "Fetch Problems", "type": "main", "index": 0 }]]
+    },
+    "Fetch Problems": {
+      "main": [[{ "node": "Select Problems", "type": "main", "index": 0 }]]
+    },
+    "Select Problems": {
+      "main": [[{ "node": "Store Selected Problems", "type": "main", "index": 0 }]]
+    },
+    "Store Selected Problems": {
+      "main": [[{ "node": "Prepare Email Content", "type": "main", "index": 0 }]]
+    },
+    "Prepare Email Content": {
+      "main": [[{ "node": "Send Email", "type": "main", "index": 0 }]]
+    }
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}
